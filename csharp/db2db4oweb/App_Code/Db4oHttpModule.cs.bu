@@ -1,0 +1,73 @@
+using System;
+using System.Configuration;
+using System.Web;
+using System.IO;
+using com.db4o;
+
+public class Db4oHttpModule : IHttpModule
+{
+    internal static readonly string KEY_DB4O_FILE_NAME = "db4oFileName";
+    internal static readonly string KEY_DB4O_CLIENT = "db4oClient";
+    private static ObjectServer objectServer = null;
+    private ObjectContainer objectClient = null;
+
+    // can make this internal instead of public?
+    public static ObjectContainer Client
+    {
+        get { return HttpContext.Current.Items[KEY_DB4O_CLIENT] as ObjectContainer; }
+    }
+
+    public void Init(HttpApplication application)
+    {
+        application.BeginRequest += new EventHandler(application_BeginRequest);
+        application.EndRequest += new EventHandler(application_EndRequest);
+        application.Disposed += new EventHandler(application_Disposed);
+    }
+
+    private void application_BeginRequest(object sender, EventArgs e)
+    {
+        HttpApplication application = (HttpApplication)sender;
+        HttpContext context = application.Context;
+        string yapFilePath = context.Server.MapPath(ConfigurationManager.AppSettings[KEY_DB4O_FILE_NAME]);   
+        if (objectServer == null)
+        {
+            File.Delete(yapFilePath);
+            objectServer = Db4o.OpenServer(yapFilePath, 0);
+        }
+
+        objectClient = objectServer.OpenClient();
+
+        context.Items[KEY_DB4O_CLIENT] = objectClient;
+    }
+
+    private void application_EndRequest(object sender, EventArgs e)
+    {
+        HttpApplication application = (HttpApplication)sender;
+        HttpContext context = application.Context;
+
+        CloseClient();
+
+        context.Items[KEY_DB4O_CLIENT] = null;
+    }
+
+    private void CloseClient()
+    {
+        if (objectClient != null)
+            objectClient.Close();
+
+        objectClient = null;
+    }
+
+    public void Dispose()
+    {
+        if (objectServer != null)
+            objectServer.Close();
+
+        objectServer = null;
+    }
+
+    private void application_Disposed(object sender, EventArgs e)
+    {
+        this.Dispose();
+    }
+}
